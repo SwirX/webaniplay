@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AniPlay - Web Anime Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@v1.1.4/dist/hls.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: #0f0c29;
+            color: #e0e0ff;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(16, 14, 41, 0.85);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(94, 70, 234, 0.3);
+        }
+        header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        h1 {
+            color: #7e6df3;
+            text-shadow: 0 0 10px rgba(126, 109, 243, 0.5);
+            font-size: 2.5rem;
+        }
+        .player-section {
+            display: grid;
+            grid-template-columns: 1fr 3fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .player-section {
+                grid-template-columns: 1fr;
+            }
+        }
+        .controls {
+            background: rgba(25, 22, 55, 0.7);
+            border-radius: 10px;
+            padding: 15px;
+        }
+        select, button {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            background: #191637;
+            color: #c5c1ff;
+            border: 1px solid #5e46ea;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        select:focus, button:hover {
+            outline: none;
+            border-color: #7e6df3;
+            background: #241f5a;
+        }
+        button {
+            background: linear-gradient(to right, #5e46ea, #7e6df3);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(94, 70, 234, 0.4);
+        }
+        .player-container {
+            background: black;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+        }
+        #videoPlayer {
+            width: 100%;
+            aspect-ratio: 16/9;
+            display: block;
+        }
+        .details {
+            margin-top: 20px;
+            text-align: center;
+            background: rgba(25, 22, 55, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+        }
+        .episode-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .episode-list button {
+            text-align: left;
+            padding: 10px 15px;
+            margin: 5px 0;
+        }
+        .status {
+            color: #7e6df3;
+            font-weight: 500;
+            min-height: 22px;
+            padding: 8px;
+        }
+        .gradient {
+            height: 4px;
+            background: linear-gradient(to right, #0f0c29, #5e46ea, #7e6df3, #0f0c29);
+            border-radius: 2px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AniPlay</h1>
+            <div class="gradient"></div>
+        </header>
+        
+        <div class="player-section">
+            <div class="controls">
+                <div id="statusDisplay" class="status">Loading anime data...</div>
+                
+                <select id="animeDropdown" disabled>
+                    <option value="">Select Anime</option>
+                </select>
+                
+                <select id="seasonDropdown" disabled>
+                    <option value="">Select Season</option>
+                </select>
+                
+                <div class="episode-list" id="episodeContainer">
+                    <!-- Episode buttons will be dynamically added here -->
+                </div>
+                
+                <button id="playButton" disabled>Play Episode</button>
+            </div>
+            
+            <div class="player-container">
+                <video id="videoPlayer" controls></video>
+            </div>
+        </div>
+        
+        <div class="details">
+            <h3>How to Use</h3>
+            <p>1. Select an anime title • 2. Choose season • 3. Pick episode • 4. Play!</p>
+            <p>Repo: github.com/SwirX/webaniplay</p>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = "https://raw.githubusercontent.com/SwirX/webaniplay/main/";
+        const JSON_FILE = "sources.json";
+        // Fallback URL in case of CORS issues (use JSON proxy)
+        const FALLBACK_URL = `https://api.allorigins.win/raw?url=${encodeURIComponent(BASE_URL + JSON_FILE)}`;
+
+        // DOM Elements
+        const animeDropdown = document.getElementById('animeDropdown');
+        const seasonDropdown = document.getElementById('seasonDropdown');
+        const episodeContainer = document.getElementById('episodeContainer');
+        const playButton = document.getElementById('playButton');
+        const videoPlayer = document.getElementById('videoPlayer');
+        const statusDisplay = document.getElementById('statusDisplay');
+
+        let animeData = {};
+        let currentAnime = "";
+        let currentSeason = "";
+        let currentEpisode = "";
+
+        // Initialize HLS.js player
+        let hls = null;
+        
+        function initPlayer(url) {
+            if (hls) {
+                hls.destroy();
+            }
+            
+            if (!url) return;
+            
+            if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                // Native HLS support (Safari/iOS)
+                videoPlayer.src = url;
+                statusDisplay.textContent = "Using native HLS playback";
+            } else if (Hls.isSupported()) {
+                // HLS.js for other browsers
+                hls = new Hls();
+                hls.loadSource(url);
+                hls.attachMedia(videoPlayer);
+                statusDisplay.textContent = "Using HLS.js playback engine";
+            } else {
+                statusDisplay.textContent = "HLS not supported in this browser";
+            }
+        }
+
+        // Fetch anime data from GitHub repo
+        async function fetchAnimeData() {
+            try {
+                const response = await fetch(BASE_URL + JSON_FILE);
+                if (!response.ok) throw new Error('Failed to fetch data');
+                animeData = await response.json();
+                
+                populateAnimeDropdown();
+                statusDisplay.textContent = "Select an anime";
+            } catch (error) {
+                console.error('Using fallback API:', error);
+                fetchFallbackData();
+            }
+        }
+
+        // Fallback data fetcher
+        async function fetchFallbackData() {
+            try {
+                const response = await fetch(FALLBACK_URL);
+                if (!response.ok) throw new Error('Fallback failed');
+                animeData = await response.json();
+                
+                populateAnimeDropdown();
+                statusDisplay.textContent = "Select an anime";
+            } catch (error) {
+                console.error('Data loading failed:', error);
+                statusDisplay.textContent = "❌ Failed to load anime data. Check console";
+            }
+        }
+
+        // Populate anime dropdown
+        function populateAnimeDropdown() {
+            animeDropdown.innerHTML = '<option value="">Select Anime</option>';
+            Object.keys(animeData).forEach(anime => {
+                const option = document.createElement('option');
+                option.value = anime;
+                option.textContent = anime;
+                animeDropdown.appendChild(option);
+            });
+            animeDropdown.disabled = false;
+        }
+
+        // Event Listeners
+        animeDropdown.addEventListener('change', function() {
+            currentAnime = this.value;
+            if (!currentAnime) return;
+            
+            // Populate seasons dropdown
+            seasonDropdown.innerHTML = '<option value="">Select Season</option>';
+            Object.keys(animeData[currentAnime]).forEach(season => {
+                const option = document.createElement('option');
+                option.value = season;
+                option.textContent = season;
+                seasonDropdown.appendChild(option);
+            });
+            seasonDropdown.disabled = false;
+            episodeContainer.innerHTML = '';
+            statusDisplay.textContent = `Selected: ${currentAnime}`;
+        });
+
+        seasonDropdown.addEventListener('change', function() {
+            currentSeason = this.value;
+            if (!currentAnime || !currentSeason) return;
+            
+            // Populate episode list
+            episodeContainer.innerHTML = '';
+            const episodes = animeData[currentAnime][currentSeason];
+            
+            episodes.forEach((url, index) => {
+                const button = document.createElement('button');
+                button.textContent = `Episode ${index + 1}`;
+                button.dataset.url = url;
+                button.addEventListener('click', function() {
+                    // Highlight selected episode
+                    document.querySelectorAll('#episodeContainer button').forEach(btn => {
+                        btn.style.background = '#191637';
+                    });
+                    this.style.background = '#5e46ea';
+                    currentEpisode = url;
+                    playButton.disabled = false;
+                });
+                episodeContainer.appendChild(button);
+            });
+            
+            statusDisplay.textContent = `Selected: ${currentAnime} - ${currentSeason}`;
+        });
+
+        playButton.addEventListener('click', function() {
+            if (currentEpisode) {
+                initPlayer(currentEpisode);
+                videoPlayer.play().catch(e => {
+                    console.error('Playback failed:', e);
+                    statusDisplay.textContent = "❌ Error: " + e.message;
+                });
+            }
+        });
+
+        // Initialize
+        fetchAnimeData();
+    </script>
+</body>
+</html>
