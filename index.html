@@ -174,26 +174,25 @@
         let hls = null;
         
         function initPlayer(url) {
-            if (hls) {
-                hls.destroy();
-            }
-            
-            if (!url) return;
-            
-            if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-                // Native HLS support (Safari/iOS)
-                videoPlayer.src = url;
-                statusDisplay.textContent = "Using native HLS playback";
-            } else if (Hls.isSupported()) {
-                // HLS.js for other browsers
-                hls = new Hls();
-                hls.loadSource(url);
-                hls.attachMedia(videoPlayer);
-                statusDisplay.textContent = "Using HLS.js playback engine";
-            } else {
-                statusDisplay.textContent = "HLS not supported in this browser";
-            }
-        }
+    if (hls) {
+        hls.destroy();
+    }
+
+    const proxiedUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+
+    if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+        videoPlayer.src = proxiedUrl;
+        statusDisplay.textContent = "Using native HLS playback";
+    } else if (Hls.isSupported()) {
+        hls = new Hls();
+        hls.loadSource(proxiedUrl);
+        hls.attachMedia(videoPlayer);
+        statusDisplay.textContent = "Using HLS.js playback via CORS proxy";
+    } else {
+        statusDisplay.textContent = "HLS not supported in this browser";
+    }
+}
+
 
         // Fetch anime data from GitHub repo
         async function fetchAnimeData() {
